@@ -1,9 +1,10 @@
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
+from fine_tune import MODEL_TO_OUTPUT
 
-MODEL_NAME = "facebook/opt-350m"
-LOADED_LORA_DIR = "lora-opt-350m-finetuned"  # directory where LoRA adapters were saved
+MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
+LOADED_LORA_DIR = MODEL_TO_OUTPUT[MODEL_NAME]
 
 
 # 2. Load the tokenizer
@@ -33,7 +34,7 @@ with torch.no_grad():
 
 # 8. Decode and print the response
 response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-print("=== Baseline OPT-350M Response ===")
+print(f"=== Baseline {MODEL_NAME} Response ===")
 print(response)
 
 
@@ -58,6 +59,6 @@ inputs = {k: v.to("cuda") for k, v in inputs.items()}
 
 # 6. Generate
 outputs = model.generate(**inputs, max_new_tokens=100)
-print("=== LoRA OPT-350M Response ===")
+print(f"=== LoRA {MODEL_NAME} Response ===")
 print(tokenizer.decode(outputs[0], skip_special_tokens=True))
 
