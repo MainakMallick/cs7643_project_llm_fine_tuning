@@ -1,6 +1,6 @@
 import os
 import torch
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
@@ -33,37 +33,67 @@ SAVE_STEPS = 500
 EVAL_STEPS = 500
 
 def tokenize_example(example):
-        text = format_example(example)
-        tokenized = tokenizer(
-            text,
-            truncation=True,
-            max_length=MAX_SEQ_LENGTH,
-            padding="max_length"
-        )
-        return tokenized
+    text = format_example(example)
+    tokenized = tokenizer(
+        text,
+        truncation=True,
+        max_length=MAX_SEQ_LENGTH,
+        padding="max_length"
+    )
+    return tokenized
 
-def format_example(example):
+def format_example(example, is_test=False):
     # If there's no 'input' (it might be empty), we can handle that gracefully
     instruction = example["instruction"].strip()
     input_text = example["input"].strip()
     output_text = example["output"].strip()
 
     if input_text:
-        prompt = (
-            f"Below is an instruction that describes a task. "
-            f"Write a response that appropriately completes the request.\n\n"
-            f"### Instruction:\n{instruction}\n\n"
-            f"### Input:\n{input_text}\n\n"
-            f"### Response:\n{output_text}"
-        )
+        if is_test:
+            prompt = (
+                f"Below is an instruction that describes a task. "
+                f"Write a response that appropriately completes the request.\n\n"
+                f"### Instruction:\n{instruction}\n\n"
+                f"### Input:\n{input_text}\n\n"
+                f"### Response:\n"
+            )
+        else:
+            prompt = (
+                f"Below is an instruction that describes a task. "
+                f"Write a response that appropriately completes the request.\n\n"
+                f"### Instruction:\n{instruction}\n\n"
+                f"### Input:\n{input_text}\n\n"
+                f"### Response:\n{output_text}"
+            )
     else:
-        prompt = (
-            f"Below is an instruction that describes a task. "
-            f"Write a response that appropriately completes the request.\n\n"
-            f"### Instruction:\n{instruction}\n\n"
-            f"### Response:\n{output_text}"
-        )
+        if is_test:
+            prompt = (
+                f"Below is an instruction that describes a task. "
+                f"Write a response that appropriately completes the request.\n\n"
+                f"### Instruction:\n{instruction}\n\n"
+                f"### Response:\n"
+            )
+        else:
+            prompt = (
+                f"Below is an instruction that describes a task. "
+                f"Write a response that appropriately completes the request.\n\n"
+                f"### Instruction:\n{instruction}\n\n"
+                f"### Response:\n{output_text}"
+            )
     return prompt
+
+def extract_response(generated_text):
+    """
+    Extracts the response from the generated text.
+    Assumes the response starts after the '### Response:' section.
+    """
+    response_marker = "### Response:"
+    response_start = generated_text.find(response_marker)
+    if response_start == -1:
+        return None  # Response marker not found
+    response_start += len(response_marker)
+    response = generated_text[response_start:].strip()
+    return response
 if __name__ == "__main__":
     # 2. Load dataset
     #    The iamtarun/python_code_instructions_18k_alpaca dataset likely has
@@ -87,18 +117,24 @@ if __name__ == "__main__":
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
+    all_datasets = dataset["train"]
+    # Shuffle the dataset
+    all_datasets = all_datasets.shuffle()
     
-
+    # Split off 1000 examples for evaluation
+    eval_dataset = all_datasets.select(range(1000))
+    
+    # Split another 1000 examples for testing
+    test_dataset = all_datasets.select(range(1000, 2000))
+    test_dataset.to_json("dataset/python_code_instructions_18k_alpaca_test.json")
+    
+    # Remove eval and test examples from the training dataset
+    train_dataset = all_datasets.select(range(2000, len(all_datasets)))
     # Use map to preprocess
-    train_dataset = dataset["train"].map(tokenize_example, batched=False)
+    train_dataset = train_dataset.map(tokenize_example, batched=False)
     train_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
-    # If you have a validation set in the dataset, do the same:
-    if "validation" in dataset:
-        eval_dataset = dataset["validation"].map(tokenize_example, batched=False)
-        eval_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
-    else:
-        # Or split off some portion of train if needed
-        eval_dataset = train_dataset.select(range(1000))  # quick hack for illustration
+    eval_dataset = eval_dataset.map(tokenize_example, batched=False)
+    eval_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
 
     # 5. Load Model
     base_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
@@ -127,7 +163,7 @@ if __name__ == "__main__":
     # 9. Training Arguments
     training_args = TrainingArguments(
         output_dir=OUTPUT_DIR,
-        evaluation_strategy="steps",
+        eval_strategy="steps",
         eval_steps=EVAL_STEPS,
         save_strategy="steps",
         save_steps=SAVE_STEPS,
@@ -151,7 +187,7 @@ if __name__ == "__main__":
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         data_collator=data_collator,
-        tokenizer=tokenizer
+        tokenizer=tokenizer,    
     )
 
     # 11. Train!
@@ -162,13 +198,14 @@ if __name__ == "__main__":
     tokenizer.save_pretrained(OUTPUT_DIR)
 
     # 13. Plot loss vs iterations
-    loss_values = train_result.training_loss
-    iterations = range(len(loss_values))
+    loss_values = [log["loss"] for log in trainer.state.log_history if "loss" in log]
+    steps = [log["step"] for log in trainer.state.log_history if "loss" in log]
 
-    plt.plot(iterations, loss_values, label="Training Loss")
-    plt.xlabel("Iterations")
+    plt.figure(figsize=(10, 5))
+    plt.plot(steps, loss_values, label="Training Loss")
+    plt.xlabel("Step")
     plt.ylabel("Loss")
-    plt.title("Training Loss vs Iterations")
+    plt.title("Training Loss over Steps")
     plt.legend()
     plt.savefig(os.path.join(OUTPUT_DIR, f"training_loss_plot_{MODEL_NAME.replace('/', '_')}.png"))
     plt.show()
