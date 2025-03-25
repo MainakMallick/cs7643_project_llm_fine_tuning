@@ -8,17 +8,31 @@ from peft import PeftModel
 from tqdm import tqdm
 from typing import List
 from codebleu import calc_codebleu  # Correct import for CodeBLEU
-from fine_tune import MODEL_TO_OUTPUT, format_example
+from fine_tune import MODEL_TO_OUTPUT, format_example, extract_response
 
 # Function to download datasets from Hugging Face
 def download_dataset(dataset_name, default_path):
-    print(f"Downloading dataset {dataset_name}...")
+    if os.path.exists(default_path):
+        print(f"Dataset found at {default_path}. Loading from file...")
+        with open(default_path, "r") as f:
+            dataset = datasets.load_dataset("json", data_files=f.name)
+        data = dataset["test"] if "test" in dataset else dataset["train"]
+        return data
+
+    print(f"Dataset {dataset_name} not found at {default_path}. Downloading...")
     try:
         dataset = datasets.load_dataset(dataset_name)
-        data = dataset["train"] if "train" in dataset else dataset["test"]
+        # Use "test" split if available, otherwise fallback to "train"
+        data = dataset["test"] if "test" in dataset else dataset["train"]
+        
+        # Save the dataset to the specified default path
+        os.makedirs(os.path.dirname(default_path), exist_ok=True)
+        data.to_json(default_path)
+        
         return data
-    except Exception:
-        print(f"Dataset {dataset_name} not found. Please provide the dataset manually at {default_path}.")
+    except Exception as e:
+        print(f"Failed to download dataset {dataset_name}. Error: {e}")
+        print(f"Please provide the dataset manually at {default_path}.")
         return None
 
 # Load model and tokenizer
@@ -39,15 +53,25 @@ def generate_code(model, tokenizer, prompt, max_tokens=100):
     return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
 # Evaluate Pass@1 using HumanEval
-# Should we use pass-k 
+# TODO: Should we use pass-k 
+# Evaluate Pass@1 using HumanEval
 def evaluate_humaneval(model, tokenizer, humaneval_data):
     correct = 0
     total = len(humaneval_data)
+    results = []  # To store prompts and generated code
+
     for example in tqdm(humaneval_data, desc="Evaluating HumanEval"):
         prompt = example["prompt"]
         expected_output = example["canonical_solution"]
         generated_code = generate_code(model, tokenizer, prompt)
         
+        # Save the prompt and generated code
+        results.append({
+            "prompt": prompt,
+            "generated_code": generated_code,
+            "expected_output": expected_output
+        })
+
         try:
             exec_env = {}
             exec(generated_code, exec_env)
@@ -55,6 +79,12 @@ def evaluate_humaneval(model, tokenizer, humaneval_data):
                 correct += 1
         except Exception:
             pass
+
+    # Save results to output/human_eval.json
+    os.makedirs("output", exist_ok=True)
+    with open("output/human_eval.json", "w") as f:
+        json.dump(results, f, indent=4)
+
     return correct / total
 
 # Evaluate correctness for LiveCodeBench
@@ -78,53 +108,66 @@ def evaluate_livecodebench(model, tokenizer, livecodebench_data):
 
 # Evaluate instruction adherence using CodeBLEU
 def evaluate_python_instructions(model, tokenizer, instruction_data):
-    correct = 0
-    total = len(instruction_data)
-    
+    results = []  # To store prompts and generated code
+    codebleu_scores = []  # To store CodeBLEU scores
+
     for example in tqdm(instruction_data, desc="Evaluating Instruction Adherence"):
-        prompt = example["instruction"]
+        prompt = format_example(example, is_test=True)  # Format the input using format_example
         expected_output = example["output"]
         generated_code = generate_code(model, tokenizer, prompt)
-        
-        if generated_code.strip() == expected_output.strip():
-            correct += 1
-    
-    accuracy = correct / total
-    return accuracy
+        response = extract_response(generated_code)  # Extract the response to match expected_output
+
+        # Save the prompt and generated code
+        results.append({
+            "instruction": prompt,
+            "generated_code": generated_code,
+            "extracted_response": response,
+            "expected_output": expected_output
+        })
+
+        # Calculate CodeBLEU score
+        try:
+            codebleu_score = calc_codebleu(expected_output, response, lang="python")
+            codebleu_scores.append(codebleu_score)
+        except Exception as e:
+            print(f"Error calculating CodeBLEU: {e}")
+            codebleu_scores.append(0)
+
+    # Save results to output/python_instructions.json
+    os.makedirs("output", exist_ok=True)
+    with open("output/python_instructions.json", "w") as f:
+        json.dump(results, f, indent=4)
+
+    # Calculate average CodeBLEU score
+    avg_codebleu_score = sum(codebleu_scores) / len(codebleu_scores) if codebleu_scores else 0
+    return avg_codebleu_score
 
 # Main evaluation function
-def evaluate_model(model_name, lora_dir, test_ratio=0.1):
+def evaluate_model(model_name, lora_dir):
     model, tokenizer = load_model(model_name, lora_dir)
     
     # Download datasets or use manual paths
-    humaneval_data = download_dataset("openai_humaneval", "dataset/humaneval.json")
-    if humaneval_data is None:
-        humaneval_data = json.load(open("dataset/humaneval.json"))
+    #humaneval_data = download_dataset("openai_humaneval", "dataset/humaneval.json")
     
-    livecodebench_data = download_dataset("livecodebench/code_generation_lite", "dataset/livecodebench.json")
-    if livecodebench_data is None:
-        livecodebench_data = json.load(open("dataset/livecodebench.json"))
+    #livecodebench_data = download_dataset("livecodebench/code_generation_lite", "dataset/livecodebench.json")
     
-    instruction_data = download_dataset("iamtarun/python_code_instructions_18k_alpaca", "dataset/python_code_instructions_18k_alpaca.json")
-    if instruction_data is None:
-        instruction_data = json.load(open("dataset/python_code_instructions_18k_alpaca.json"))
+    instruction_data = download_dataset("iamtarun/python_code_instructions_18k_alpaca", "dataset/python_code_instructions_18k_alpaca_test.json")
+    
     # Split data for evaluation
-    humaneval_data = humaneval_data[:int(test_ratio * len(humaneval_data))]
     #livecodebench_data = livecodebench_data[:int(test_ratio * len(livecodebench_data))]
-    instruction_data = instruction_data[:int(test_ratio * len(instruction_data))]
 
     # Evaluate
-    pass_at_1 = evaluate_humaneval(model, tokenizer, humaneval_data)
+    #pass_at_1 = evaluate_humaneval(model, tokenizer, humaneval_data)
     #livecodebench_acc = evaluate_livecodebench(model, tokenizer, livecodebench_data)
     code_bleu_score = evaluate_python_instructions(model, tokenizer, instruction_data)
     
     print("\n=== Evaluation Results ===")
-    print(f"Pass@1 (HumanEval): {pass_at_1:.4f}")
+    #print(f"Pass@1 (HumanEval): {pass_at_1:.4f}")
     #print(f"Correctness (LiveCodeBench): {livecodebench_acc:.4f}")
     print(f"CodeBLEU Score (Instruction Adherence): {code_bleu_score:.4f}")
     
     return {
-        "Pass@1": pass_at_1,
+        #"Pass@1": pass_at_1,
         # "LiveCodeBench Accuracy": livecodebench_acc,
         "CodeBLEU Score": code_bleu_score,
     }
