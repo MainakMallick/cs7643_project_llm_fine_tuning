@@ -43,10 +43,10 @@ def load_model(model_name, lora_dir):
     tokenizer = AutoTokenizer.from_pretrained(lora_dir, use_fast=False)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    return model, tokenizer
+    return base_model, model, tokenizer
 
 # Generate code from a given prompt
-def generate_code(model, tokenizer, prompt, max_tokens=100):
+def generate_code(model, tokenizer, prompt, max_tokens=500):
     inputs = tokenizer(prompt, return_tensors="pt")
     inputs = {k: v.to("cuda") for k, v in inputs.items()}
     outputs = model.generate(**inputs, max_new_tokens=max_tokens)
@@ -192,7 +192,7 @@ def evaluate_python_instructions(model, tokenizer, instruction_data):
         references.append(reference)
     
     # Calculate the CodeBLEU score for the set of generated codes against the references.
-    codebleu_score = calc_codebleu(candidates, references, lang='python')
+    codebleu_score = calc_codebleu(candidates, references, "python")
     
     return codebleu_score
     # # Save all results
@@ -205,30 +205,41 @@ def evaluate_python_instructions(model, tokenizer, instruction_data):
 
 # Main evaluation function
 def evaluate_model(model_name, lora_dir):
-    model, tokenizer = load_model(model_name, lora_dir)
+    base_model, model, tokenizer = load_model(model_name, lora_dir)
     
     # Download datasets or use manual paths
     #humaneval_data = download_dataset("openai_humaneval", "dataset/humaneval.json")
     
     #livecodebench_data = download_dataset("livecodebench/code_generation_lite", "dataset/livecodebench.json")
     
-    instruction_data = download_dataset("iamtarun/python_code_instructions_18k_alpaca", "dataset/python_code_instructions_18k_alpaca_test.json")
+    instruction_data = download_dataset("iamtarun/python_code_instructions_18k_alpaca", "dataset/python_code_instructions_18k_alpaca_test_small.json")
     
     # Split data for evaluation
     #livecodebench_data = livecodebench_data[:int(test_ratio * len(livecodebench_data))]
 
-    # Evaluate
+    # Evaluate the baseline
+    #pass_at_1_base = evaluate_humaneval(base_model, tokenizer, humaneval_data)
+    #livecodebench_acc_base = evaluate_livecodebench(base_model, tokenizer, livecodebench_data)
+    code_bleu_score_base = evaluate_python_instructions(base_model, tokenizer, instruction_data)
+
+    # Evaluate finetune
     #pass_at_1 = evaluate_humaneval(model, tokenizer, humaneval_data)
     #livecodebench_acc = evaluate_livecodebench(model, tokenizer, livecodebench_data)
     code_bleu_score = evaluate_python_instructions(model, tokenizer, instruction_data)
     
     print("\n=== Evaluation Results ===")
+    print(f"\nBaseline Model: {model_name}")
+    #print(f"Pass@1 (HumanEval): {pass_at_1_base:.4f}")
+    #print(f"Correctness (LiveCodeBench): {livecodebench_acc_base:.4f}")
+    print(f"CodeBLEU Score (Instruction Adherence): {code_bleu_score_base}")
+
+    print(f"\nFine-tuned Model: {lora_dir}")
     #print(f"Pass@1 (HumanEval): {pass_at_1:.4f}")
     #print(f"Correctness (LiveCodeBench): {livecodebench_acc:.4f}")
-    print(f"CodeBLEU Score (Instruction Adherence): {code_bleu_score:.4f}")
+    print(f"CodeBLEU Score (Instruction Adherence): {code_bleu_score}")
     
     return {
-        #"Pass@1": pass_at_1,
+        #"Pass@1": pass_at_1[[],
         # "LiveCodeBench Accuracy": livecodebench_acc,
         "CodeBLEU Score": code_bleu_score,
     }
@@ -237,4 +248,3 @@ def evaluate_model(model_name, lora_dir):
 if __name__ == "__main__":
     MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
     results = evaluate_model(MODEL_NAME, MODEL_TO_OUTPUT[MODEL_NAME])
-    print(results)
