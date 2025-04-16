@@ -12,7 +12,6 @@ from peft import LoraConfig, get_peft_model
 import matplotlib.pyplot as plt  # Add this import
 from torch.utils.data import DataLoader
 from transformers import default_data_collator
-from datasets import load_dataset
 from transformers import AutoTokenizer
 from transformers import AutoModelForCausalLM
 from peft import IA3Config, get_peft_model
@@ -29,7 +28,7 @@ access_token = os.getenv("HF_ACCESS_TOKEN")
 MODEL_TO_OUTPUT = {
     "facebook/opt-350m": "lora-opt-350m-finetuned", 
     "meta-llama/Meta-Llama-3-8B": "lora-meta-llama-3-8b-finetuned",
-    "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B": "Lora-deepseek-ai-1-5b-finetuned"
+    "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B": "lora-deepseek-ai-1-5b-finetuned"
 }
 # 1. Configuration
 MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
@@ -141,7 +140,6 @@ if __name__ == "__main__":
     # 9. Training Arguments
     training_args = TrainingArguments(
         output_dir=OUTPUT_DIR,
-        evaluation_strategy="steps",
         eval_steps=EVAL_STEPS,
         save_strategy="steps",
         save_steps=SAVE_STEPS,

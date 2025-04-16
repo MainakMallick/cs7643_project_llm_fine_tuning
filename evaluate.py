@@ -107,40 +107,101 @@ def evaluate_livecodebench(model, tokenizer, livecodebench_data):
     return correct / total
 
 # Evaluate instruction adherence using CodeBLEU
+# def evaluate_python_instructions(model, tokenizer, instruction_data):
+#     results = []
+#     codebleu_scores = []
+
+#     for example in tqdm(instruction_data, desc="Evaluating Instruction Adherence"):
+#         try:
+#             prompt = format_example(example, is_test=True)
+#             expected_output = example["output"]
+#             generated_code = generate_code(model, tokenizer, prompt)
+#             response = extract_response(generated_code)
+
+#             # Validate inputs
+#             if not isinstance(expected_output, str):
+#                 print(f"Skipping example ID {example.get('id', 'unknown')}: expected_output is not a string ({type(expected_output)})")
+#                 codebleu_scores.append(0)
+#                 continue
+#             if not isinstance(response, str):
+#                 print(f"Skipping example ID {example.get('id', 'unknown')}: response is not a string ({type(response)})")
+#                 codebleu_scores.append(0)
+#                 continue
+#             if not expected_output.strip() or not response.strip():
+#                 print(f"Skipping example ID {example.get('id', 'unknown')}: Empty expected_output or response")
+#                 codebleu_scores.append(0)
+#                 continue
+
+#             # Save result
+#             results.append({
+#                 "instruction": prompt,
+#                 "generated_code": generated_code,
+#                 "extracted_response": response,
+#                 "expected_output": expected_output
+#             })
+
+#             # Compute CodeBLEU
+#             codebleu_result = calc_codebleu(
+#                 references=[expected_output],
+#                 predictions=[response],
+#                 lang="python",
+#                 weights=(0.25, 0.25, 0.25, 0.25)
+#             )
+#             # Extract the 'codebleu' score from the result dictionary
+#             codebleu_score = codebleu_result['codebleu']
+#             codebleu_scores.append(codebleu_score)
+
+#         except Exception as e:
+#             print(f"Error processing example ID {example.get('id', 'unknown')}: {str(e)}")
+#             codebleu_scores.append(0)
+#             continue
+
 def evaluate_python_instructions(model, tokenizer, instruction_data):
-    results = []  # To store prompts and generated code
-    codebleu_scores = []  # To store CodeBLEU scores
+    """
+    Evaluate instruction adherence using CodeBLEU for a dataset of Python instructions.
+    
+    Args:
+        model: The loaded language model.
+        tokenizer: The tokenizer corresponding to the model.
+        instruction_data: A dataset with instruction examples. Each example is expected to have
+                          the necessary fields, e.g., an instruction prompt and the expected code
+                          output (assumed here to be in the "output" key).
+                          
+    Returns:
+        A float representing the CodeBLEU score across the evaluated examples.
+    """
+    candidates = []  # List to hold model-generated code responses
+    references = []  # List to hold the expected reference code from the dataset
+    
+    for example in tqdm(instruction_data, desc="Evaluating CodeBLEU Instruction Adherence"):
+        # Format the prompt. This could combine the instruction and any associated input.
+        prompt = format_example(example)
+        
+        # Generate a response using the model.
+        generated_text = generate_code(model, tokenizer, prompt)
+        
+        # Extract the actual code output using the helper function.
+        candidate = extract_response(generated_text)
+        
+        # Get the reference code from the dataset.
+        # Adjust the key if your dataset uses a different name.
+        reference = example.get("output", "").strip()
+        
+        # Append to our collections; stripping extra whitespace for consistency.
+        candidates.append(candidate.strip())
+        references.append(reference)
+    
+    # Calculate the CodeBLEU score for the set of generated codes against the references.
+    codebleu_score = calc_codebleu(candidates, references, lang='python')
+    
+    return codebleu_score
+    # # Save all results
+    # os.makedirs("output", exist_ok=True)
+    # with open("output/python_instructions.json", "w") as f:
+    #     json.dump(results, f, indent=4)
 
-    for example in tqdm(instruction_data, desc="Evaluating Instruction Adherence"):
-        prompt = format_example(example, is_test=True)  # Format the input using format_example
-        expected_output = example["output"]
-        generated_code = generate_code(model, tokenizer, prompt)
-        response = extract_response(generated_code)  # Extract the response to match expected_output
-
-        # Save the prompt and generated code
-        results.append({
-            "instruction": prompt,
-            "generated_code": generated_code,
-            "extracted_response": response,
-            "expected_output": expected_output
-        })
-
-        # Calculate CodeBLEU score
-        try:
-            codebleu_score = calc_codebleu(expected_output, response, lang="python")
-            codebleu_scores.append(codebleu_score)
-        except Exception as e:
-            print(f"Error calculating CodeBLEU: {e}")
-            codebleu_scores.append(0)
-
-    # Save results to output/python_instructions.json
-    os.makedirs("output", exist_ok=True)
-    with open("output/python_instructions.json", "w") as f:
-        json.dump(results, f, indent=4)
-
-    # Calculate average CodeBLEU score
-    avg_codebleu_score = sum(codebleu_scores) / len(codebleu_scores) if codebleu_scores else 0
-    return avg_codebleu_score
+    # avg_score = sum(codebleu_scores) / len(codebleu_scores) if codebleu_scores else 0.0
+    # return avg_score
 
 # Main evaluation function
 def evaluate_model(model_name, lora_dir):
