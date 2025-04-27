@@ -37,11 +37,17 @@ pip install torch transformers datasets peft matplotlib tqdm numpy codebleu
 
 2. **Run the Fine-Tuning Script:**
 
-   Use the `fine_tune.py` script to fine-tune the model with LoRA.
+   Use the `fine_tune_lora.py` script to fine-tune the model with LoRA.
 
    Example command:
    ```bash
-   python fine_tune.py
+   python fine_tune_lora.py
+   ```
+   Use the `fine_tune_ia3.py` script to fine-tune the model with LoRA.
+
+   Example command:
+   ```bash
+   python fine_tune_ia3.py
    ```
 
    This script:
@@ -62,15 +68,20 @@ pip install torch transformers datasets peft matplotlib tqdm numpy codebleu
 
 **HumanEval Evaluation:**
 
-Use the `evaluate.py` script to evaluate the model on CodeLBLEU:
+Use the `evaluate.py` and `evaluate_passk.py` script to evaluate the model on CodeLBLEU and Pass@k benchmark respectively:
 ```bash
 python evaluate.py
 ```
 
 
+```bash
+python evaluate_passk.py
+```
+
+
 **Output:**
 - Evaluation results are saved in the output directory as JSON files.
-- Metrics CodeBLEU, and correctness are printed to the console.
+- Metrics and correctness are printed to the console.
 
 ---
 
@@ -78,7 +89,7 @@ python evaluate.py
 
 **Fine-Tuning:**
 ```bash
-python fine_tune.py
+python fine_tune_lora.py
 ```
 
 **Evaluating on CodeBLEU:**
@@ -86,10 +97,7 @@ python fine_tune.py
 python evaluate.py
 ```
 
-**Evaluating on Pass@k:**
-```bash
-python evaluate_passk.py
-```
+
 ---
 
 ## Notes
