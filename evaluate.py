@@ -9,6 +9,7 @@ from tqdm import tqdm
 from typing import List
 from codebleu import calc_codebleu  # Correct import for CodeBLEU
 from fine_tune import MODEL_TO_OUTPUT, format_example, extract_response
+from fine_tune import MODEL_TO_OUTPUT as MODEL_TO_OUTPUT_IA3
 
 # Function to download datasets from Hugging Face
 def download_dataset(dataset_name, default_path):
@@ -212,7 +213,7 @@ def evaluate_model(model_name, lora_dir):
     
     #livecodebench_data = download_dataset("livecodebench/code_generation_lite", "dataset/livecodebench.json")
     
-    instruction_data = download_dataset("iamtarun/python_code_instructions_18k_alpaca", "dataset/python_code_instructions_18k_alpaca_test_small.json")
+    instruction_data = download_dataset("iamtarun/python_code_instructions_18k_alpaca", "dataset/python_code_instructions_18k_alpaca_test.json")
     
     # Split data for evaluation
     #livecodebench_data = livecodebench_data[:int(test_ratio * len(livecodebench_data))]
@@ -248,3 +249,4 @@ def evaluate_model(model_name, lora_dir):
 if __name__ == "__main__":
     MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
     results = evaluate_model(MODEL_NAME, MODEL_TO_OUTPUT[MODEL_NAME])
+    results = evaluate_model(MODEL_NAME, MODEL_TO_OUTPUT_IA3[MODEL_NAME])

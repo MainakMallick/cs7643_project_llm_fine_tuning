@@ -12,11 +12,11 @@ from peft import LoraConfig, get_peft_model
 import matplotlib.pyplot as plt  # Add this import
 
 access_token = os.getenv("HF_ACCESS_TOKEN")
-
+FINE_TUNE_METHOD = "lora"
 MODEL_TO_OUTPUT = {
-    "facebook/opt-350m": "lora-opt-350m-finetuned", 
-    "meta-llama/Meta-Llama-3-8B": "lora-meta-llama-3-8b-finetuned",
-    "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B": "lora-deepseek-ai-1-5b-finetuned"
+    "facebook/opt-350m": f"{FINE_TUNE_METHOD}-opt-350m-finetuned", 
+    "meta-llama/Meta-Llama-3-8B": f"{FINE_TUNE_METHOD}-meta-llama-3-8b-finetuned",
+    "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B": f"{FINE_TUNE_METHOD}-deepseek-ai-1-5b-finetuned"
 }
 # 1. Configuration
 MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
@@ -30,7 +30,7 @@ WARMUP_STEPS = 100
 MAX_SEQ_LENGTH = 512
 LR_SCHEDULER_TYPE = "cosine"
 SAVE_STEPS = 500
-EVAL_STEPS = 500
+EVAL_STEPS = 10
 
 def tokenize_example(example):
     text = format_example(example)
@@ -118,8 +118,9 @@ if __name__ == "__main__":
         tokenizer.pad_token = tokenizer.eos_token
 
     all_datasets = dataset["train"]
-    # Shuffle the dataset
-    all_datasets = all_datasets.shuffle()
+    # Set a random seed for reproducibility
+    seed = 42
+    all_datasets = all_datasets.shuffle(seed=seed)
     
     # Split off 1000 examples for evaluation
     eval_dataset = all_datasets.select(range(1000))
@@ -152,6 +153,7 @@ if __name__ == "__main__":
 
     # 7. Attach LoRA to the base model
     lora_model = get_peft_model(base_model, lora_config)
+    lora_model.print_trainable_parameters()
 
     # 8. Data Collator
     #    We can use a DataCollatorForLanguageModeling to handle dynamic LM masking/padding.
@@ -167,7 +169,7 @@ if __name__ == "__main__":
         eval_steps=EVAL_STEPS,
         save_strategy="steps",
         save_steps=SAVE_STEPS,
-        logging_steps=100,
+        logging_steps=10,
         learning_rate=LEARNING_RATE,
         per_device_train_batch_size=BATCH_SIZE,
         per_device_eval_batch_size=BATCH_SIZE,
@@ -197,20 +199,37 @@ if __name__ == "__main__":
     trainer.save_model(OUTPUT_DIR)
     tokenizer.save_pretrained(OUTPUT_DIR)
 
-    # 13. Plot loss vs iterations
-    loss_values = [log["loss"] for log in trainer.state.log_history if "loss" in log]
-    steps = [log["step"] for log in trainer.state.log_history if "loss" in log]
+       # 13. Plot loss vs iterations
 
-    plt.figure(figsize=(10, 5))
-    plt.plot(steps, loss_values, label="Training Loss")
-    plt.xlabel("Step")
+    train_loss_values = [log["loss"] for log in trainer.state.log_history if "loss" in log]
+    train_steps = list(range(len(train_loss_values)))
+
+# Extract validation loss values
+    eval_loss_values = [log["eval_loss"] for log in trainer.state.log_history if "eval_loss" in log]
+    eval_steps = [i for i, log in enumerate(trainer.state.log_history) if "eval_loss" in log]
+
+    # --- Training Loss Plot ---
+    plt.figure()
+    plt.plot(train_steps, train_loss_values, label="Training Loss", color="blue")
+    plt.xlabel("Steps")
     plt.ylabel("Loss")
-    plt.title("Training Loss over Steps")
+    plt.title("Training Loss over Time")
     plt.legend()
-    plt.savefig(os.path.join(OUTPUT_DIR, f"training_loss_plot_{MODEL_NAME.replace('/', '_')}.png"))
-    plt.show()
+    train_plot_path = os.path.join(OUTPUT_DIR, f"training_loss_plot_{MODEL_NAME.replace('/', '_')}.png")
+    plt.savefig(train_plot_path)
+    plt.close()
 
-    # You now have a LoRA-adapted model in OUTPUT_DIR.
+    # --- Validation Loss Plot ---
+    plt.figure()
+    plt.plot(eval_steps, eval_loss_values, label="Validation Loss", color="orange", marker='o')
+    plt.xlabel("Steps")
+    plt.ylabel("Loss")
+    plt.title("Validation Loss over Time")
+    plt.legend()
+    eval_plot_path = os.path.join(OUTPUT_DIR, f"validation_loss_plot_{MODEL_NAME.replace('/', '_')}.png")
+    plt.savefig(eval_plot_path)
+    plt.close()
+        # You now have a LoRA-adapted model in OUTPUT_DIR.
     # To use it for inference, load the base model again and apply the saved LoRA weights:
     #
     # from peft import PeftModel

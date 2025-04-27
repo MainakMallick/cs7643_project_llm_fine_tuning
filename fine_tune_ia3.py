@@ -24,7 +24,6 @@ import os
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 from datetime import datetime
-access_token = os.getenv("HF_ACCESS_TOKEN")
 
 MODEL_TO_OUTPUT = {
     "facebook/opt-350m": "lora-opt-350m-finetuned", 
@@ -100,18 +99,25 @@ if __name__ == "__main__":
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
+    all_datasets = dataset["train"]
+    # Set a random seed for reproducibility
+    seed = 42
+    all_datasets = all_datasets.shuffle(seed=seed)
     
-
+    # Split off 1000 examples for evaluation
+    eval_dataset = all_datasets.select(range(1000))
+    
+    # Split another 1000 examples for testing
+    test_dataset = all_datasets.select(range(1000, 2000))
+    test_dataset.to_json("dataset/python_code_instructions_18k_alpaca_test_2.json")
+    
+    # Remove eval and test examples from the training dataset
+    train_dataset = all_datasets.select(range(2000, len(all_datasets)))
     # Use map to preprocess
-    train_dataset = dataset["train"].map(tokenize_example, batched=False)
+    train_dataset = train_dataset.map(tokenize_example, batched=False)
     train_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
-    # If you have a validation set in the dataset, do the same:
-    if "validation" in dataset:
-        eval_dataset = dataset["validation"].map(tokenize_example, batched=False)
-        eval_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
-    else:
-        # Or split off some portion of train if needed
-        eval_dataset = train_dataset.select(range(1000))  # quick hack for illustration
+    eval_dataset = eval_dataset.map(tokenize_example, batched=False)
+    eval_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
 
     # 5. Load Model
     model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
