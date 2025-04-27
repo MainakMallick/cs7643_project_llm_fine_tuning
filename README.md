@@ -62,7 +62,7 @@ pip install torch transformers datasets peft matplotlib tqdm numpy codebleu
 
 **HumanEval Evaluation:**
 
-Use the `evaluate.py` script to evaluate the model on CodeLBLU:
+Use the `evaluate.py` script to evaluate the model on CodeLBLEU:
 ```bash
 python evaluate.py
 ```
@@ -86,6 +86,10 @@ python fine_tune.py
 python evaluate.py
 ```
 
+**Evaluating on Pass@k:**
+```bash
+python evaluate_passk.py
+```
 ---
 
 ## Notes
