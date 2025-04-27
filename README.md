@@ -43,7 +43,7 @@ pip install torch transformers datasets peft matplotlib tqdm numpy codebleu
    ```bash
    python fine_tune_lora.py
    ```
-   Use the `fine_tune_ia3.py` script to fine-tune the model with LoRA.
+   Use the `fine_tune_ia3.py` script to fine-tune the model with IA3.
 
    Example command:
    ```bash
@@ -53,7 +53,7 @@ pip install torch transformers datasets peft matplotlib tqdm numpy codebleu
    This script:
    - Loads the dataset.
    - Preprocesses the data into instruction-following format.
-   - Fine-tunes the model using LoRA.
+   - Fine-tunes the model using LoRA and IA3 respectively.
    - Saves the fine-tuned model and generates training/validation loss plots.
 
    **Output:**
